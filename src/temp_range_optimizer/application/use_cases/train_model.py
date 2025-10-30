@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import Dict, Optional
+
+from ...common.config import ProjectConfig
+from ...common.logging import get_logger
+from ...domain.entities import FeatureImportance, ModelTrainingResult
+from ...domain.repositories import (
+    DatasetRepository,
+    FeatureImportanceWriter,
+    MetricEvaluator,
+    MetricsWriter,
+    ModelPersistence,
+    ModelTrainer,
+)
+from ...domain.value_objects import DataSplit
+from ...infrastructure.modeling.xgboost_trainer import compute_feature_importances
+
+
+@dataclass
+class TrainModelUseCase:
+    dataset_repository: DatasetRepository
+    trainer: ModelTrainer
+    evaluator: MetricEvaluator
+    model_store: ModelPersistence
+    metrics_writer: MetricsWriter
+    feature_importance_writer: FeatureImportanceWriter | None
+    config: ProjectConfig
+    logger: logging.Logger = get_logger("TrainModelUseCase")
+
+    def execute(self, model_name: str = "xgboost_regressor") -> ModelTrainingResult:
+        self.logger.info("Starting model training for %s", model_name)
+        self.config.ensure_directories()
+
+        train_split = self.dataset_repository.load_split(DataSplit.TRAIN)
+        val_split = self.dataset_repository.load_split(DataSplit.VALIDATION)
+        try:
+            test_split = self.dataset_repository.load_split(DataSplit.TEST)
+        except FileNotFoundError:
+            self.logger.warning("Test split not found. Proceeding without test evaluation.")
+            test_split = None
+
+        model = self.trainer.train(train_split, val_split)
+        self.logger.info("Model training completed.")
+
+        metrics: Dict[str, Dict[str, float]] = {
+            "train": self.evaluator.evaluate(model, train_split),
+            "validation": self.evaluator.evaluate(model, val_split),
+        }
+        if test_split is not None:
+            metrics["test"] = self.evaluator.evaluate(model, test_split)
+
+        metrics_path = self.config.paths.reports_dir / f"{model_name}_metrics.json"
+        self.metrics_writer.write(metrics, str(metrics_path))
+        self.logger.info("Metrics written to %s", metrics_path)
+
+        model_path = self.config.paths.models_dir / f"{model_name}.joblib"
+        self.model_store.save(model, str(model_path))
+        self.logger.info("Model saved to %s", model_path)
+
+        importance_path: Optional[str] = None
+        if self.feature_importance_writer is not None:
+            importances = compute_feature_importances(model)
+            importance_destination = self.config.paths.reports_dir / f"{model_name}_feature_importances.csv"
+            self.feature_importance_writer.write(importances, str(importance_destination))
+            importance_path = str(importance_destination)
+            self.logger.info("Feature importances written to %s", importance_destination)
+
+        return ModelTrainingResult(
+            metrics=metrics,
+            model_path=str(model_path),
+            feature_importances_path=importance_path,
+        )
+
