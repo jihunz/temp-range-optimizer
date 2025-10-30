@@ -34,6 +34,13 @@ MODEL_NAME: str = "xgb_baseline"
 
 
 def build_use_case(config: ProjectConfig) -> TrainModelUseCase:
+    """학습에 필요한 인프라 의존성을 한 번에 조립한다.
+
+    핵심 흐름
+      1. 데이터 리포지토리 → 학습/평가/SHAP에서 동일한 데이터 분할 재사용
+      2. TargetScaler → 작은 불량률 값을 스케일링하여 학습 안정화
+      3. Trainer/Evaluator/Writer → XGBoost 모델 학습, 메트릭 계산, 산출물 저장
+    """
     dataset_repo = PandasDatasetRepository(config.data)
     trainer = XGBoostModelTrainer(config.training)
     target_scaler = TargetScaler.from_config(config.target_scaling)
@@ -55,6 +62,7 @@ def build_use_case(config: ProjectConfig) -> TrainModelUseCase:
 
 
 def main() -> None:
+    """Run ID를 생성하고 학습→평가→산출물 저장 전체 파이프라인을 실행한다."""
     configure_logging()
     ensure_matplotlib_config_dir()
     config = load_project_config(CONFIG_PATH)

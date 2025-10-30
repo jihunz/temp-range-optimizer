@@ -35,6 +35,7 @@ class OptimizeTemperatureCombinationUseCase:
         lot_ids: Optional[Sequence[str]] = None,
         max_lots: Optional[int] = None,
     ) -> Path:
+        """학습된 모델을 기반으로 LOT별 온도 피처 최적 조합을 탐색한다."""
         self.config.ensure_directories()
         dataset = self.dataset_repository.load_split(split)
         model_path = self.config.paths.models_dir / f"{model_name}.joblib"

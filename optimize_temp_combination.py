@@ -47,6 +47,7 @@ def parse_split(value: str) -> DataSplit:
 
 
 def main() -> None:
+    """최신 학습 Run을 불러와 LOT별 Optuna 기반 최적화 흐름을 수행한다."""
     configure_logging()
     ensure_matplotlib_config_dir()
     config = load_project_config(CONFIG_PATH)

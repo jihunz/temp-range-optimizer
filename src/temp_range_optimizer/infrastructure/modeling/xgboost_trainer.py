@@ -49,7 +49,7 @@ class XGBoostModelTrainer(ModelTrainer):
             training_data.features,
             training_data.target,
             eval_set=eval_set,
-            verbose=False,
+            verbose=True,
         )
         return model
 

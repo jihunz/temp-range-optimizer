@@ -37,6 +37,7 @@ class AnalyzeShapInteractionsUseCase:
         )
 
     def execute(self, model_name: str = "xgboost_regressor") -> ShapAnalysisArtifacts:
+        """훈련된 모델을 불러와 SHAP 요약/상호작용/LOT별 시각화를 생성한다."""
         self.config.ensure_directories()
         dataset = self.service.load_dataset_sample(DataSplit.TRAIN)
         model_path = self.config.paths.models_dir / f"{model_name}.joblib"

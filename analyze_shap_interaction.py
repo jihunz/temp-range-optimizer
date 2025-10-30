@@ -25,7 +25,10 @@ CONFIG_PATH: Optional[Path] = None
 RUN_ID: Optional[str] = None  # None이면 latest_run 사용
 MODEL_NAME: str = "xgb_baseline"
 # ========================
+
+
 def main() -> None:
+    """기존 학습 Run을 조회해 SHAP 기반 분석 산출물을 생성한다."""
     configure_logging()
     ensure_matplotlib_config_dir()
     config = load_project_config(CONFIG_PATH)

@@ -33,6 +33,14 @@ class TrainModelUseCase:
     logger: logging.Logger = get_logger("TrainModelUseCase")
 
     def execute(self, model_name: str = "xgboost_regressor") -> ModelTrainingResult:
+        """Train XGBoost 모델을 학습하고 산출물을 저장한다.
+
+        절차
+          1. 데이터 분할 로드 (train/val/test)
+          2. TargetScaler로 타깃을 스케일링한 뒤 모델 학습
+          3. 각 분할에 대한 예측 성능 평가
+          4. 모델, 메트릭, 피처 중요도를 Run 디렉터리에 저장
+        """
         self.logger.info("Starting model training for %s", model_name)
         self.config.ensure_directories()
 
