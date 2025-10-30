@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -11,41 +11,41 @@ if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from temp_range_optimizer.application.use_cases.analyze_shap import AnalyzeShapInteractionsUseCase
+from temp_range_optimizer.common.config import load_project_config
 from temp_range_optimizer.common.environment import ensure_matplotlib_config_dir
 from temp_range_optimizer.common.logging import configure_logging
+from temp_range_optimizer.common.run import read_latest_run_marker
+from temp_range_optimizer.common.scaling import TargetScaler
 from temp_range_optimizer.infrastructure.data.pandas_repository import PandasDatasetRepository
 from temp_range_optimizer.infrastructure.modeling.xgboost_trainer import JoblibModelPersistence
-from temp_range_optimizer.interfaces.cli.common import add_config_argument, parse_project_config
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Generate SHAP-based interaction analyses and visualizations."
-    )
-    add_config_argument(parser)
-    parser.add_argument(
-        "--model-name",
-        type=str,
-        default="xgboost_regressor",
-        help="Name of the trained model to load from the artifacts directory.",
-    )
-    return parser.parse_args()
-
-
+# ==== 사용자 설정 영역 ====
+CONFIG_PATH: Optional[Path] = None
+RUN_ID: Optional[str] = None  # None이면 latest_run 사용
+MODEL_NAME: str = "xgb_baseline"
+# ========================
 def main() -> None:
     configure_logging()
     ensure_matplotlib_config_dir()
-    args = parse_args()
-    config = parse_project_config(args)
+    config = load_project_config(CONFIG_PATH)
+    base_artifacts_root = config.paths.artifacts_root
+    run_id = RUN_ID or read_latest_run_marker(base_artifacts_root)
+    if run_id is None:
+        raise ValueError("latest_run.txt 가 없으므로 RUN_ID를 직접 지정하세요.")
+    config.paths.artifacts_root = base_artifacts_root / run_id
+    target_scaler = TargetScaler.from_config(config.target_scaling)
 
     use_case = AnalyzeShapInteractionsUseCase(
         dataset_repository=PandasDatasetRepository(config.data),
         model_store=JoblibModelPersistence(),
         config=config,
+        target_scaler=target_scaler,
         logger=logging.getLogger("AnalyzeShapInteractionsUseCase"),
     )
 
-    artifacts = use_case.execute(model_name=args.model_name)
+    logging.info("Using artifacts run %s", run_id)
+    artifacts = use_case.execute(model_name=MODEL_NAME)
     logging.info("SHAP summary plot saved to %s", artifacts.summary_plot)
     logging.info("SHAP summary table saved to %s", artifacts.summary_table)
     for path in artifacts.dependence_plots:

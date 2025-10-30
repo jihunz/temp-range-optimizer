@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -11,9 +11,11 @@ if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from temp_range_optimizer.application.use_cases.train_model import TrainModelUseCase
-from temp_range_optimizer.common.config import ProjectConfig
+from temp_range_optimizer.common.config import ProjectConfig, load_project_config
 from temp_range_optimizer.common.environment import ensure_matplotlib_config_dir
 from temp_range_optimizer.common.logging import configure_logging
+from temp_range_optimizer.common.run import generate_run_id, write_latest_run_marker
+from temp_range_optimizer.common.scaling import TargetScaler
 from temp_range_optimizer.infrastructure.data.pandas_repository import PandasDatasetRepository
 from temp_range_optimizer.infrastructure.modeling.xgboost_trainer import (
     FeatureImportanceCSVWriter,
@@ -22,13 +24,20 @@ from temp_range_optimizer.infrastructure.modeling.xgboost_trainer import (
     SklearnMetricEvaluator,
     XGBoostModelTrainer,
 )
-from temp_range_optimizer.interfaces.cli.common import add_config_argument, parse_project_config
+
+
+# ==== 사용자 설정 영역 ====
+CONFIG_PATH: Optional[Path] = None  # 예) Path("configs/experiment.yaml")
+RUN_ID: Optional[str] = None  # None이면 자동 생성
+MODEL_NAME: str = "xgb_baseline"
+# ========================
 
 
 def build_use_case(config: ProjectConfig) -> TrainModelUseCase:
     dataset_repo = PandasDatasetRepository(config.data)
     trainer = XGBoostModelTrainer(config.training)
-    evaluator = SklearnMetricEvaluator()
+    target_scaler = TargetScaler.from_config(config.target_scaling)
+    evaluator = SklearnMetricEvaluator(target_scaler=target_scaler)
     model_store = JoblibModelPersistence()
     metrics_writer = MetricsJSONWriter()
     feature_writer = FeatureImportanceCSVWriter()
@@ -40,29 +49,22 @@ def build_use_case(config: ProjectConfig) -> TrainModelUseCase:
         metrics_writer=metrics_writer,
         feature_importance_writer=feature_writer,
         config=config,
+        target_scaler=target_scaler,
         logger=logging.getLogger("TrainModelUseCase"),
     )
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train XGBoost model for defect rate prediction.")
-    add_config_argument(parser)
-    parser.add_argument(
-        "--model-name",
-        type=str,
-        default="xgboost_regressor",
-        help="Name used when persisting the trained model and reports.",
-    )
-    return parser.parse_args()
 
 
 def main() -> None:
     configure_logging()
     ensure_matplotlib_config_dir()
-    args = parse_args()
-    config = parse_project_config(args)
+    config = load_project_config(CONFIG_PATH)
+    base_artifacts_root = config.paths.artifacts_root
+    run_id = RUN_ID or generate_run_id()
+    config.paths.artifacts_root = base_artifacts_root / run_id
     use_case = build_use_case(config)
-    result = use_case.execute(model_name=args.model_name)
+    result = use_case.execute(model_name=MODEL_NAME)
+    write_latest_run_marker(base_artifacts_root, run_id)
+    logging.info("Artifacts stored under %s", config.paths.artifacts_root)
     logging.info("Training completed. Model stored at %s", result.model_path)
     logging.info("Metrics summary: %s", result.metrics)
     if result.feature_importances_path:

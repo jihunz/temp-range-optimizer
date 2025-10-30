@@ -13,6 +13,7 @@ import seaborn as sns
 import shap
 
 from ...common.config import PathsConfig, ShapConfig
+from ...common.scaling import TargetScaler
 from ...domain.entities import DatasetSplit, ShapExplanation
 from ...domain.repositories import DatasetRepository, ModelPersistence, RegressionModel
 from ...domain.value_objects import DataSplit
@@ -38,6 +39,7 @@ class ShapAnalysisService:
     model_store: ModelPersistence
     shap_config: ShapConfig
     paths_config: PathsConfig
+    target_scaler: TargetScaler
     logger: logging.Logger
     random_state: int = 42
 
@@ -69,11 +71,12 @@ class ShapAnalysisService:
         feature_frame = dataset.features
         explainer = shap.TreeExplainer(model, feature_perturbation="tree_path_dependent")
         shap_result = explainer(feature_frame)
-        shap_values = np.array(shap_result.values)
+        shap_values = self.target_scaler.inverse_values(shap_result.values)
         interaction_values = None
         if self.shap_config.interaction_top_k > 0:
-            interaction_values = explainer.shap_interaction_values(feature_frame)
-        expected_value = float(np.mean(shap_result.base_values))
+            raw_interactions = explainer.shap_interaction_values(feature_frame)
+            interaction_values = self.target_scaler.inverse_values(raw_interactions)
+        expected_value = self.target_scaler.inverse_scalar(float(np.mean(shap_result.base_values)))
         explanation = ShapExplanation(
             feature_frame=feature_frame,
             shap_values=shap_values,
@@ -254,7 +257,7 @@ class ShapAnalysisService:
         predictions = np.asarray(
             model.predict(repeated_baseline[explanation.feature_frame.columns])
         )
-        surface = predictions.reshape(mesh_a.shape)
+        surface = self.target_scaler.inverse_values(predictions).reshape(mesh_a.shape)
 
         fig = go.Figure(
             data=[

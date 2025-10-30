@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from ...common.config import ProjectConfig
+from ...common.scaling import TargetScaler
 from ...common.logging import get_logger
-from ...domain.entities import FeatureImportance, ModelTrainingResult
+from ...domain.entities import DatasetSplit, FeatureImportance, ModelTrainingResult
 from ...domain.repositories import (
     DatasetRepository,
     FeatureImportanceWriter,
@@ -28,6 +29,7 @@ class TrainModelUseCase:
     metrics_writer: MetricsWriter
     feature_importance_writer: FeatureImportanceWriter | None
     config: ProjectConfig
+    target_scaler: TargetScaler
     logger: logging.Logger = get_logger("TrainModelUseCase")
 
     def execute(self, model_name: str = "xgboost_regressor") -> ModelTrainingResult:
@@ -42,7 +44,10 @@ class TrainModelUseCase:
             self.logger.warning("Test split not found. Proceeding without test evaluation.")
             test_split = None
 
-        model = self.trainer.train(train_split, val_split)
+        scaled_train_split = self._scale_split(train_split)
+        scaled_val_split = self._scale_split(val_split)
+
+        model = self.trainer.train(scaled_train_split, scaled_val_split)
         self.logger.info("Model training completed.")
 
         metrics: Dict[str, Dict[str, float]] = {
@@ -72,5 +77,14 @@ class TrainModelUseCase:
             metrics=metrics,
             model_path=str(model_path),
             feature_importances_path=importance_path,
+        )
+
+    def _scale_split(self, split: DatasetSplit) -> DatasetSplit:
+        if not self.target_scaler.enabled:
+            return split
+        return DatasetSplit(
+            features=split.features,
+            target=self.target_scaler.scale_series(split.target),
+            lots=split.lots,
         )
 

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Optional, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -13,8 +13,11 @@ if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
 from temp_range_optimizer.application.use_cases.optimize_temperature import (
     OptimizeTemperatureCombinationUseCase,
 )
+from temp_range_optimizer.common.config import load_project_config
 from temp_range_optimizer.common.environment import ensure_matplotlib_config_dir
 from temp_range_optimizer.common.logging import configure_logging
+from temp_range_optimizer.common.run import read_latest_run_marker
+from temp_range_optimizer.common.scaling import TargetScaler
 from temp_range_optimizer.domain.value_objects import DataSplit
 from temp_range_optimizer.infrastructure.data.pandas_repository import PandasDatasetRepository
 from temp_range_optimizer.infrastructure.modeling.xgboost_trainer import JoblibModelPersistence
@@ -24,40 +27,16 @@ from temp_range_optimizer.infrastructure.optimization.optuna_optimizer import (
 from temp_range_optimizer.infrastructure.optimization.writer import (
     OptimizationResultCSVWriter,
 )
-from temp_range_optimizer.interfaces.cli.common import add_config_argument, parse_project_config
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Optimize temperature feature combinations to minimize defect rate predictions."
-    )
-    add_config_argument(parser)
-    parser.add_argument(
-        "--model-name",
-        type=str,
-        default="xgboost_regressor",
-        help="Name of the trained model artifact to load.",
-    )
-    parser.add_argument(
-        "--split",
-        type=str,
-        default="val",
-        choices=[split.value for split in DataSplit],
-        help="Dataset split to use for optimization.",
-    )
-    parser.add_argument(
-        "--lot-id",
-        action="append",
-        dest="lot_ids",
-        help="Specific LOT IDs to optimize (can be repeated).",
-    )
-    parser.add_argument(
-        "--max-lots",
-        type=int,
-        default=None,
-        help="Maximum number of lots to optimize.",
-    )
-    return parser.parse_args()
+# ==== 사용자 설정 영역 ====
+CONFIG_PATH: Optional[Path] = None
+RUN_ID: Optional[str] = None  # None이면 latest_run 사용
+MODEL_NAME: str = "xgb_baseline"
+SPLIT_NAME: str = "val"  # "train", "val", "test"
+LOT_IDS: Optional[Sequence[str]] = None  # 예) ["HZC01", "HZC02"]
+MAX_LOTS: Optional[int] = 5
+# ========================
 
 
 def parse_split(value: str) -> DataSplit:
@@ -70,9 +49,14 @@ def parse_split(value: str) -> DataSplit:
 def main() -> None:
     configure_logging()
     ensure_matplotlib_config_dir()
-    args = parse_args()
-    config = parse_project_config(args)
-    split = parse_split(args.split)
+    config = load_project_config(CONFIG_PATH)
+    base_artifacts_root = config.paths.artifacts_root
+    run_id = RUN_ID or read_latest_run_marker(base_artifacts_root)
+    if run_id is None:
+        raise ValueError("latest_run.txt 가 없으므로 RUN_ID를 직접 지정하세요.")
+    config.paths.artifacts_root = base_artifacts_root / run_id
+    split = parse_split(SPLIT_NAME)
+    target_scaler = TargetScaler.from_config(config.target_scaling)
 
     optimizer = OptunaTemperatureOptimizer(
         n_trials=config.optimization.n_trials,
@@ -87,14 +71,16 @@ def main() -> None:
         optimizer=optimizer,
         result_writer=OptimizationResultCSVWriter(),
         config=config,
+        target_scaler=target_scaler,
         logger=logging.getLogger("OptimizeTemperatureCombinationUseCase"),
     )
 
+    logging.info("Using artifacts run %s", run_id)
     output_path = use_case.execute(
-        model_name=args.model_name,
+        model_name=MODEL_NAME,
         split=split,
-        lot_ids=args.lot_ids,
-        max_lots=args.max_lots,
+        lot_ids=list(LOT_IDS) if LOT_IDS is not None else None,
+        max_lots=MAX_LOTS,
     )
     logging.info("Optimization results saved to %s", output_path)
 

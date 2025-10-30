@@ -10,6 +10,7 @@ import pandas as pd
 
 from ...common.config import ProjectConfig
 from ...common.logging import get_logger
+from ...common.scaling import TargetScaler
 from ...domain.entities import OptimizationRecommendation
 from ...domain.repositories import DatasetRepository, ModelPersistence
 from ...domain.value_objects import DataSplit, FeatureRange
@@ -24,6 +25,7 @@ class OptimizeTemperatureCombinationUseCase:
     optimizer: OptunaTemperatureOptimizer
     result_writer: OptimizationResultCSVWriter
     config: ProjectConfig
+    target_scaler: TargetScaler
     logger: logging.Logger = get_logger("OptimizeTemperatureCombinationUseCase")
 
     def execute(
@@ -58,11 +60,14 @@ class OptimizeTemperatureCombinationUseCase:
         results: List[OptimizationRecommendation] = []
         for lot_id in selected_lots:
             base_row = self._extract_lot_row(dataset, lot_id)
-            baseline_prediction = float(model.predict(pd.DataFrame([base_row]))[0])
+            baseline_prediction = self.target_scaler.inverse_scalar(
+                float(model.predict(pd.DataFrame([base_row]))[0])
+            )
             best_params, best_value = self.optimizer.optimize(
                 model=model,
                 base_features=base_row,
                 feature_ranges={name: feature_ranges[name] for name in candidate_features},
+                target_scaler=self.target_scaler,
             )
 
             recommendation = OptimizationRecommendation(

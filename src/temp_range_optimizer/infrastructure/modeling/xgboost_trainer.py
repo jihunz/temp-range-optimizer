@@ -12,6 +12,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from xgboost import XGBRegressor
 
 from ...common.config import TrainingConfig
+from ...common.scaling import TargetScaler
 from ...domain.entities import DatasetSplit, FeatureImportance
 from ...domain.repositories import (
     MetricEvaluator,
@@ -55,12 +56,17 @@ class XGBoostModelTrainer(ModelTrainer):
 
 @dataclass
 class SklearnMetricEvaluator(MetricEvaluator):
+    target_scaler: TargetScaler | None = None
+
     def evaluate(self, model: RegressionModel, dataset: DatasetSplit) -> Dict[str, float]:
         predictions = np.asarray(model.predict(dataset.features))
-        mae = mean_absolute_error(dataset.target, predictions)
-        mse = mean_squared_error(dataset.target, predictions)
+        target = dataset.target.to_numpy()
+        if self.target_scaler is not None and self.target_scaler.enabled:
+            predictions = self.target_scaler.inverse_values(predictions)
+        mae = mean_absolute_error(target, predictions)
+        mse = mean_squared_error(target, predictions)
         rmse = float(np.sqrt(mse))
-        r2 = r2_score(dataset.target, predictions)
+        r2 = r2_score(target, predictions)
         return {"mae": float(mae), "rmse": float(rmse), "r2": float(r2)}
 
 

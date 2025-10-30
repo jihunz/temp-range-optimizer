@@ -6,6 +6,7 @@ from typing import Dict, Mapping
 import optuna
 import pandas as pd
 
+from ...common.scaling import TargetScaler
 from ...domain.value_objects import FeatureRange
 
 
@@ -21,6 +22,7 @@ class OptunaTemperatureOptimizer:
         model,
         base_features: pd.Series,
         feature_ranges: Mapping[str, FeatureRange],
+        target_scaler: TargetScaler | None = None,
     ) -> Dict[str, float]:
         sampler = optuna.samplers.TPESampler(seed=self.seed)
         study = optuna.create_study(direction="minimize", sampler=sampler)
@@ -32,6 +34,8 @@ class OptunaTemperatureOptimizer:
                 value = trial.suggest_float(feature_name, low, high)
                 candidate.at[0, feature_name] = value
             prediction = float(model.predict(candidate)[0])
+            if target_scaler is not None and target_scaler.enabled:
+                prediction = target_scaler.inverse_scalar(prediction)
             return prediction
 
         study.optimize(
@@ -40,4 +44,5 @@ class OptunaTemperatureOptimizer:
             timeout=self.timeout_seconds,
             n_jobs=self.n_jobs,
         )
-        return study.best_params, float(study.best_value)
+        best_value = float(study.best_value)
+        return study.best_params, best_value

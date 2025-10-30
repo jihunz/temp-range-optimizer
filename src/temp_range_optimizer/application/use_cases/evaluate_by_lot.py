@@ -12,6 +12,7 @@ import shap
 
 from ...common.config import ProjectConfig
 from ...common.logging import get_logger
+from ...common.scaling import TargetScaler
 from ...domain.repositories import DatasetRepository, ModelPersistence
 from ...domain.value_objects import DataSplit
 
@@ -29,6 +30,7 @@ class EvaluateByLotUseCase:
     dataset_repository: DatasetRepository
     model_store: ModelPersistence
     config: ProjectConfig
+    target_scaler: TargetScaler
     logger: logging.Logger = get_logger("EvaluateByLotUseCase")
 
     def execute(
@@ -45,6 +47,7 @@ class EvaluateByLotUseCase:
         model = self.model_store.load(str(model_path))
 
         predictions = np.asarray(model.predict(dataset.features))
+        predictions = self.target_scaler.inverse_values(predictions)
         report_df = pd.DataFrame(
             {
                 "LOT_NO": dataset.lots.values,
@@ -126,6 +129,7 @@ class EvaluateByLotUseCase:
     ) -> Path:
         explainer = shap.TreeExplainer(model, feature_perturbation="tree_path_dependent")
         shap_values = explainer(dataset.features).values
+        shap_values = self.target_scaler.inverse_values(shap_values)
         shap_abs = np.abs(shap_values)
         shap_df = pd.DataFrame(shap_abs, columns=dataset.features.columns)
         shap_df["LOT_NO"] = dataset.lots.values

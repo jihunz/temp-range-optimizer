@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple
 
 from ...common.config import ProjectConfig
 from ...common.logging import get_logger
+from ...common.scaling import TargetScaler
 from ...domain.repositories import DatasetRepository, ModelPersistence
 from ...domain.value_objects import DataSplit
 from ...infrastructure.analysis.shap_service import (
@@ -21,6 +22,7 @@ class AnalyzeShapInteractionsUseCase:
     dataset_repository: DatasetRepository
     model_store: ModelPersistence
     config: ProjectConfig
+    target_scaler: TargetScaler
     logger: logging.Logger = get_logger("AnalyzeShapInteractionsUseCase")
 
     def __post_init__(self) -> None:
@@ -29,6 +31,7 @@ class AnalyzeShapInteractionsUseCase:
             model_store=self.model_store,
             shap_config=self.config.shap,
             paths_config=self.config.paths,
+            target_scaler=self.target_scaler,
             logger=self.logger,
             random_state=self.config.training.random_seed,
         )

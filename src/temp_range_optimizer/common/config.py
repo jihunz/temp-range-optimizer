@@ -117,6 +117,16 @@ class ShapConfig:
 
 
 @dataclass
+class TargetScalingConfig:
+    enabled: bool = True
+    scale_factor: float = 100_000.0
+
+    def __post_init__(self) -> None:
+        if self.scale_factor <= 0:
+            raise ValueError("target scale factor must be positive")
+
+
+@dataclass
 class OptimizationConfig:
     target_temperature_features: Optional[Sequence[str]] = None
     candidate_feature_patterns: Sequence[str] = (
@@ -143,6 +153,7 @@ class ProjectConfig:
     paths: PathsConfig = field(default_factory=PathsConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     shap: ShapConfig = field(default_factory=ShapConfig)
+    target_scaling: TargetScalingConfig = field(default_factory=TargetScalingConfig)
     optimization: OptimizationConfig = field(default_factory=OptimizationConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
 
@@ -165,6 +176,7 @@ def _load_from_mapping(mapping: Dict[str, Any]) -> ProjectConfig:
         paths=build(PathsConfig, "paths"),
         training=build(TrainingConfig, "training"),
         shap=build(ShapConfig, "shap"),
+        target_scaling=build(TargetScalingConfig, "target_scaling"),
         optimization=build(OptimizationConfig, "optimization"),
         evaluation=build(EvaluationConfig, "evaluation"),
     )
