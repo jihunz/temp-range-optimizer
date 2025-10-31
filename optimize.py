@@ -175,5 +175,5 @@ def optimize(
 
 
 if __name__ == "__main__":
-    optimize()
+    optimize(split="test")
 

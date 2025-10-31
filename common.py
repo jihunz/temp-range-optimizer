@@ -27,9 +27,9 @@ DEFAULT_CONFIG: Dict[str, object] = {
         "latest_run_filename": "latest_run.txt",
     },
     "data": {
-        "train": "data/lot_dataset_v2_train.csv",
-        "validation": "data/lot_dataset_v2_val.csv",
-        "test": "data/lot_dataset_v2_test.csv",
+        "train": "data/v3/lot_dataset_v3_train.csv",
+        "validation": "data/v3/lot_dataset_v3_val.csv",
+        "test": "data/v3/lot_dataset_v3_all.csv",
         "target_column": "불량률",
         "lot_column": "LOT_NO",
         "exclude_columns": [
