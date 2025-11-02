@@ -148,10 +148,17 @@ def merge_features_labels(
     required_cols: List[str],
     optional_cols: List[str],
 ) -> pd.DataFrame:
+    if "열처리_염욕_1" in labels.columns:
+        label_key = "열처리_염욕_1"
+    elif "배정번호" in labels.columns:
+        label_key = "배정번호"
+    else:
+        raise KeyError("Labels must contain either '열처리 염욕_1' or '배정번호' column.")
+
     merged = features.merge(
         labels,
         left_on="배정번호",
-        right_on="열처리_염욕_1",
+        right_on=label_key,
         how="inner",
     )
 
