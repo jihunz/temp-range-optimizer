@@ -158,6 +158,39 @@ def _save_lot_barplots(
     return destination
 
 
+def _save_lot_shap_table(
+    shap_values: np.ndarray,
+    columns: Sequence[str],
+    lots: Sequence[str],
+    destination: Path,
+    top_k_features: int,
+) -> Optional[Path]:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shap_df = pd.DataFrame(np.abs(shap_values), columns=columns)
+    shap_df["LOT_NO"] = list(lots)
+    lot_mean = shap_df.groupby("LOT_NO").mean()
+    if lot_mean.empty:
+        return None
+
+    records = []
+    for lot in lot_mean.index:
+        values = lot_mean.loc[lot].sort_values(ascending=False).head(top_k_features)
+        for feature, value in values.items():
+            records.append({
+                "LOT_NO": lot,
+                "feature": feature,
+                "mean_abs_shap": value,
+            })
+
+    if not records:
+        return None
+
+    table = pd.DataFrame(records)
+    table.sort_values(["LOT_NO", "mean_abs_shap"], ascending=[True, False], inplace=True)
+    table.to_csv(destination, index=False)
+    return destination
+
+
 def _save_surface_plot(
     model,
     scaler: TargetScaler,
@@ -288,6 +321,14 @@ def analyze(
         top_k_lots=shap_cfg.get("lot_top_lots", 5),
     )
 
+    lot_table_path = _save_lot_shap_table(
+        shap_values,
+        columns,
+        sampled_dataset.lots,
+        run_paths["reports"] / f"{model_name}_lot_shap_top10.csv",
+        top_k_features=shap_cfg.get("lot_csv_top_features", 10),
+    )
+
     surface_path: Optional[Path] = None
     if len(top_features) >= 2:
         feature_ranges = compute_feature_ranges(dataset, top_features[:2])
@@ -315,6 +356,8 @@ def analyze(
         artefacts["interaction_heatmap"] = str(heatmap_path)
     if lot_barplot_path:
         artefacts["lot_barplot"] = str(lot_barplot_path)
+    if lot_table_path:
+        artefacts["lot_shap_table"] = str(lot_table_path)
     if surface_path:
         artefacts["surface_plot"] = str(surface_path)
     return artefacts
@@ -322,4 +365,3 @@ def analyze(
 
 if __name__ == "__main__":
     analyze(split='test')
-
