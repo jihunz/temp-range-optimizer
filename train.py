@@ -77,6 +77,12 @@ def train(
     eval_metric = training_cfg.get("eval_metric")
     if eval_metric and "eval_metric" not in params:
         params["eval_metric"] = eval_metric
+    
+    # Early stopping을 모델 파라미터로 설정
+    early_stop = training_cfg.get("early_stopping_rounds")
+    if early_stop and val_split.features.shape[0] > 0:
+        params["early_stopping_rounds"] = early_stop
+        params["callbacks"] = None  # 기본 콜백 사용
 
     model = XGBRegressor(**params)
     eval_set = []
@@ -87,6 +93,7 @@ def train(
             (scaled_val.features, scaled_val.target.to_numpy(dtype=float)),
         ]
         fit_kwargs["eval_set"] = eval_set
+        fit_kwargs["verbose"] = False
 
     model.fit(
         scaled_train.features,
